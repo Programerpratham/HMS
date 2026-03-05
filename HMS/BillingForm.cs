@@ -34,21 +34,70 @@ namespace HMS
             }
         }
 
+        // --- PREDEFINED RATES HELPER METHOD ---
+        private decimal GetServiceRate(string serviceName)
+        {
+            // You can adjust these placeholder prices to fit your project requirements
+            switch (serviceName)
+            {
+                case "Emergency Bill": return 1500;
+                case "OPD Bill (Out Patient Department)": return 500;
+                case "IPD Bill (In Patient Department)": return 1000;
+                case "Consultation Bill": return 800;
+                case "Surgery Bill": return 25000;
+                case "Laboratory Bill": return 1200;
+                case "X-Ray": return 600;
+                case "CT Scan": return 3500;
+                case "MRI": return 7000;
+                case "ECG": return 400;
+                case "Sonography": return 1500;
+                case "Pharmacy Bill": return 0; // Set to 0 so the user can type the exact medicine cost
+                case "Nursing Charges": return 800;
+                case "Operation Theatre (OT) Charges": return 10000;
+                case "Room / Ward Charges": return 2000;
+                case "ICU Bill": return 5000;
+                case "Ambulance Bill": return 1500;
+                case "Admission Charges": return 1000;
+                case "Discharge Charges": return 500;
+                default: return 0;
+            }
+        }
+
         // --- REAL-TIME MATH LOGIC ---
 
         private void dgvBillDetails_CellValueChanged(object sender, DataGridViewCellEventArgs e)
         {
-            // If Qty or Rate changes, calculate the Line Total
-            if (e.RowIndex >= 0 && (e.ColumnIndex == 1 || e.ColumnIndex == 2))
+            if (e.RowIndex >= 0)
             {
                 DataGridViewRow row = dgvBillDetails.Rows[e.RowIndex];
-                decimal qty = 0, rate = 0;
 
-                decimal.TryParse(Convert.ToString(row.Cells[1].Value), out qty);
-                decimal.TryParse(Convert.ToString(row.Cells[2].Value), out rate);
+                // 1. Auto-fill the Rate and Qty if the user selects a Service Description
+                if (e.ColumnIndex == 0 && row.Cells[0].Value != null)
+                {
+                    string selectedService = row.Cells[0].Value.ToString();
+                    decimal predefinedRate = GetServiceRate(selectedService);
 
-                row.Cells[3].Value = (qty * rate).ToString("0.00");
-                CalculateSubTotal();
+                    // Set the Rate column (Index 2)
+                    row.Cells[2].Value = predefinedRate.ToString("0.00");
+
+                    // Set Qty column (Index 1) to "1" by default if it's empty
+                    if (row.Cells[1].Value == null || string.IsNullOrWhiteSpace(row.Cells[1].Value.ToString()))
+                    {
+                        row.Cells[1].Value = "1";
+                    }
+                }
+
+                // 2. Calculate the Line Total if Service, Qty, or Rate changes
+                if (e.ColumnIndex == 0 || e.ColumnIndex == 1 || e.ColumnIndex == 2)
+                {
+                    decimal qty = 0, rate = 0;
+
+                    decimal.TryParse(Convert.ToString(row.Cells[1].Value), out qty);
+                    decimal.TryParse(Convert.ToString(row.Cells[2].Value), out rate);
+
+                    row.Cells[3].Value = (qty * rate).ToString("0.00");
+                    CalculateSubTotal();
+                }
             }
         }
 
@@ -68,17 +117,26 @@ namespace HMS
                 }
             }
             txtSubTotal.Text = subTotal.ToString("0.00");
-            CalculateFinalTotals(null, null);
+
+            // Trigger the auto-calculation of Tax, Discount, and Net Payable
+            CalculateFinalTotals(this, EventArgs.Empty);
         }
 
         private void CalculateFinalTotals(object sender, EventArgs e)
         {
-            decimal subTotal = 0, tax = 0, discount = 0;
-
+            decimal subTotal = 0;
             decimal.TryParse(txtSubTotal.Text, out subTotal);
-            decimal.TryParse(txtTax.Text, out tax);
-            decimal.TryParse(txtDiscount.Text, out discount);
 
+            // Predefined Calculations: 18% Tax and 5% Discount
+            decimal tax = subTotal * 0.18m;
+            subTotal = subTotal - tax;
+            decimal discount = subTotal * 0.05m;
+
+            // Update UI fields automatically
+            txtTax.Text = tax.ToString("0.00");
+            txtDiscount.Text = discount.ToString("0.00");
+
+            // Final Net Payable: Sub Total + Tax - Discount
             decimal netPayable = (subTotal + tax) - discount;
             txtNet.Text = netPayable.ToString("0.00");
         }
@@ -133,7 +191,7 @@ namespace HMS
 
                         // 2. Loop through the grid and insert Details
                         string detailQuery = @"INSERT INTO BILL_DETAILS (DETAIL_ID, BILL_NO, SERVICE_DESC, QTY, RATE, LINE_TOTAL) 
-                       VALUES (seq_bill_detail.NEXTVAL, :bno, :servdesc, :qty, :rate, :total)";
+                        VALUES (seq_bill_detail.NEXTVAL, :bno, :servdesc, :qty, :rate, :total)";
 
                         OracleCommand cmdDetail = new OracleCommand(detailQuery, conn);
 
